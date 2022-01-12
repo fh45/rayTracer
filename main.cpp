@@ -32,6 +32,8 @@ class Vector{
 		data[2] /=n;
 	}
 
+
+
 	double operator[](int i) const {return data[i];}; //lecture seule
 	double& operator[](int i){return data[i];}; //modification
 	double data[3];
@@ -77,26 +79,36 @@ public:
 
 };
 
-	bool intersect(const Ray& r) const {
+	bool intersect(const Ray& r , Vector& P, Vector& N) {
 		//solve a*t^2 +b*t +c = 0
 		double a =1;
 		double b= 2*dot(r.u , r.C - O );
 		double c= (r.C - O).norm2()- R*R;
 
 		double delta = b*b - 4*a*c;
-		if (delta >= 0){
-			return true ;
+		if (delta < 0){
+			return false ;
 		}
-		else{
+		double t1 = (-b - sqrt(delta))/(2*a);
+		double t2 = (-b + sqrt(delta))/(2*a);
+
+		if (t2 <0){
 			return false;
 		}
 
-		//double sqdelta=sqrt(detla):
-		//double t1=;
-		//double t2=;
-		//double t;
+		double t;
+		if (t1>0){
+			t = t1;
+		}
+		else{
+			t=t2;
+		}
 
-		//if(t1>0)
+		P= r.C + t*r.u;
+		N=(P - O);
+		N.normalize();
+
+		return true;
 
 	}
 		double R=R;
@@ -114,6 +126,9 @@ int main() {
 	double fov=60*3.14/180;
 	double tanfov2 = tan(fov/2);
 
+	Vector lumiere_position(-10,20,40);
+	double intensite_lumiere = 300000;
+
 	std::vector<unsigned char> image2(W * H * 3, 0);
 	for (int i = 0; i < H; i++) {
 		for (int j = 0; j < W; j++) {
@@ -121,18 +136,22 @@ int main() {
 			Vector u(j-W/2+0.5, H-i-H/2+0.5,-W/(2*tanfov2));
 			u.normalize();
 			Ray r(C,u);
-			bool inter = s.intersect(r);
+			Vector P,N; 
+			bool inter = s.intersect(r,P,N);
+
+			double intensite_pixel=0.;
+
+			Vector l = (lumiere_position - P);
+			l.normalize();
+
 
 			if (inter){
-				image2[(i * W + j) * 3 + 0] = 255;
-				image2[(i * W + j) * 3 + 1] = 255;
-				image2[(i * W + j) * 3 + 2] = 255;
+				intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (lumiere_position - P).norm2();
+				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel));
+				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel));
+				image2[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,intensite_pixel));
 			}
-			else{
-				image2[(i * W + j) * 3 + 0] = 0;
-				image2[(i * W + j) * 3 + 1] = 0;
-				image2[(i * W + j) * 3 + 2] = 0;
-			}
+		
 
 			//image[(i * W + j) * 3 + 0] = 255;
 			//image[(i * W + j) * 3 + 1] = 0;
