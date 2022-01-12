@@ -7,7 +7,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-#define M_PI=3.1415
+
 
 
 class Vector{
@@ -127,7 +127,9 @@ int main() {
 	double tanfov2 = tan(fov/2);
 
 	Vector lumiere_position(-10,20,40);
-	double intensite_lumiere = 300000;
+	double intensite_lumiere = 3000000;
+
+	Vector rho(1,0,0); //albedo rouge (couleur de la sphère)
 
 	std::vector<unsigned char> image2(W * H * 3, 0);
 	for (int i = 0; i < H; i++) {
@@ -146,10 +148,11 @@ int main() {
 
 
 			if (inter){
-				intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (lumiere_position - P).norm2();
-				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel));
-				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel));
-				image2[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,intensite_pixel));
+				intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
+				
+				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel))*rho[0];
+				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel))*rho[1];
+				image2[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,intensite_pixel))*rho[2];
 			}
 		
 
