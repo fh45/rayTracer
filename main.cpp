@@ -164,25 +164,38 @@ int main() {
 	int H = 512;
 	Vector C(0,0,55);
 
-	Sphere s1(Vector(0,0,0),10,Vector(0,1,0)); //albedo vert (couleur de la sphère)
+	Sphere s1(Vector(0,0,0),10,Vector(0,1,1)); //albedo vert (couleur de la sphère)
 	Sphere s2(Vector(-10,-10,-20),15,Vector(1,0,0)); //albedo rouge (couleur de la sphère)
 
-	std::vector<Sphere> spheres;
-	spheres.insert(spheres.begin(),s1);
-	spheres.insert(spheres.begin(),s2);
+	
+	Sphere s3(Vector(0,0,-1000),1000-60,Vector(0,1,0)); //mur du fond
+	Sphere s4(Vector(0,1000,0),1000-60,Vector(1,0,0)); // plafond rouge 
+	Sphere s5(Vector(0,-1000,0),1000-40,Vector(0,0,1)); //sol bleu 
+	Sphere s6(Vector(1000,0,0),1000-40,Vector(0,1,1)); //mur de droite
+	Sphere s7(Vector(-1000,0,0),1000-40,Vector(1,1,0)); //mur de gauche
+
+
+
+
 
 	
 
 	Scene scene;
 	scene.addSphere(s1);
 	scene.addSphere(s2);
+	scene.addSphere(s3);
+	scene.addSphere(s4);
+	scene.addSphere(s5);
+	scene.addSphere(s6);
+	scene.addSphere(s7);
+	
 
 
 	double fov=60*3.14/180;
 	double tanfov2 = tan(fov/2);
 
 	Vector lumiere_position(-10,20,40);
-	double intensite_lumiere = 6000000;
+	double intensite_lumiere = 4000000;
 
 	//std::cout << spheres[0].rho[1];
 
@@ -212,9 +225,9 @@ int main() {
 			if (inter != -1){
 				intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
 				
-				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel))*spheres[rang_sphere].rho[0];
-				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel))*spheres[rang_sphere].rho[1];
-				image2[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,intensite_pixel))*spheres[rang_sphere].rho[2];
+				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel))*scene.spheres[rang_sphere].rho[0];
+				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel))*scene.spheres[rang_sphere].rho[1];
+				image2[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,intensite_pixel))*scene.spheres[rang_sphere].rho[2];
 			}
 		
 
