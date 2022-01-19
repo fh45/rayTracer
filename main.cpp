@@ -129,22 +129,23 @@ class Scene{
 	Scene(){};
 	void addSphere(const Sphere& s) {spheres.push_back(s);}
 
-	bool intersect_scene(const Ray& r , Vector& P, Vector& N, int &rang_sphere){
+	bool intersect_scene(const Ray& r , Vector& P, Vector& N, int &rang_sphere, double &t_min){
 
 		bool inter_scene = false;
-		double t_min=1E99;
+		t_min=1E99;
 
 		for (int i=0;i<spheres.size();i++){
 			Vector P_sphere, N_sphere;
 			double t;
 			bool inter_sphere = spheres[i].intersect(r,P_sphere,N_sphere,t);
 			if(inter_sphere){
-				inter_sphere=true;
+				inter_scene=true;
 				if(t<t_min){
 					t_min=t;
 					P = P_sphere;
 					N= N_sphere;
 					rang_sphere=i;
+					//std::cout<<"test";
 				}
 			}
 		}
@@ -164,15 +165,15 @@ int main() {
 	int H = 512;
 	Vector C(0,0,55);
 
-	Sphere s1(Vector(0,0,0),10,Vector(0,1,1)); //albedo vert (couleur de la sphère)
-	Sphere s2(Vector(-10,-10,-20),15,Vector(1,0,0)); //albedo rouge (couleur de la sphère)
+	Sphere s1(Vector(0,2,0),10,Vector(0,1,1)); //albedo vert (couleur de la sphère)
+	//Sphere s2(Vector(-10,-10,-20),15,Vector(1,0,0)); //albedo rouge (couleur de la sphère)
 
 	
-	Sphere s3(Vector(0,0,-1000),1000-60,Vector(0,1,0)); //mur du fond
-	Sphere s4(Vector(0,1000,0),1000-60,Vector(1,0,0)); // plafond rouge 
-	Sphere s5(Vector(0,-1000,0),1000-40,Vector(0,0,1)); //sol bleu 
-	Sphere s6(Vector(1000,0,0),1000-40,Vector(0,1,1)); //mur de droite
-	Sphere s7(Vector(-1000,0,0),1000-40,Vector(1,1,0)); //mur de gauche
+	Sphere s3(Vector(0,0,-1000),1000-80,Vector(1,1,1)); //mur du fond
+	//Sphere s4(Vector(0,1000,0),1000-60,Vector(1,1,1)); // plafond rouge 
+	Sphere s5(Vector(0,-1000,0),1000-10,Vector(1,1,1)); //sol bleu 
+	//Sphere s6(Vector(1000,0,0),1000-40,Vector(1,1,1)); //mur de droite
+	//Sphere s7(Vector(-1000,0,0),1000-40,Vector(1,1,1)); //mur de gauche
 
 
 
@@ -182,20 +183,20 @@ int main() {
 
 	Scene scene;
 	scene.addSphere(s1);
-	scene.addSphere(s2);
+	//scene.addSphere(s2);
 	scene.addSphere(s3);
-	scene.addSphere(s4);
+	//scene.addSphere(s4);
 	scene.addSphere(s5);
-	scene.addSphere(s6);
-	scene.addSphere(s7);
+	//scene.addSphere(s6);
+	//scene.addSphere(s7);
 	
 
 
 	double fov=60*3.14/180;
 	double tanfov2 = tan(fov/2);
 
-	Vector lumiere_position(-10,20,40);
-	double intensite_lumiere = 4000000;
+	Vector lumiere_position(-50,80,80);
+	double intensite_lumiere = 10000000000;
 
 	//std::cout << spheres[0].rho[1];
 
@@ -212,8 +213,11 @@ int main() {
 			Ray r(C,u);
 			Vector P,N;
 			int rang_sphere;
+			double t_min;
 
-			int inter = scene.intersect_scene(r,P,N,rang_sphere);
+			bool inter = scene.intersect_scene(r,P,N,rang_sphere,t_min);
+
+			//std::cout<<inter;
 	
 
 			double intensite_pixel=0.;
@@ -222,8 +226,34 @@ int main() {
 			l.normalize();
 
 			
-			if (inter != -1){
-				intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
+			if (inter){
+
+				//test ombre projetée: 
+
+				Vector P_lum,N_lum;
+				double t_min_lum;
+				int rang_sphere_lum;
+
+
+				if(scene.intersect_scene(Ray(P+0.001*N,l),P_lum,N_lum,rang_sphere_lum,t_min_lum))
+				{
+					
+					if (t_min_lum < (lumiere_position - P).norm2()){
+						intensite_pixel=0.;
+						
+					}
+
+					else{
+						intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
+					}
+				}
+				else{
+					intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
+				}
+				
+				
+				//intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
+				intensite_pixel = pow(intensite_pixel,1/2.2);
 				
 				image2[(i * W + j) * 3 + 0] = std::min(255.,std::max(0.,intensite_pixel))*scene.spheres[rang_sphere].rho[0];
 				image2[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,intensite_pixel))*scene.spheres[rang_sphere].rho[1];
