@@ -7,6 +7,7 @@ x Eclairage de la sphère par une source
 x Ombre portée des sphères
 X Surface diffuse
 X Surface Speculaire 
+x Eclairage indirect avec Monte Carlo
 
 
 -----Bugs-----
@@ -31,6 +32,13 @@ x Surfaces transparentes
 
 std::default_random_engine engine; 
 std::uniform_real_distribution<double> uniform(0,1);
+
+//Pour lecture fichiers obj
+#include <string>
+#include <iostream>
+#include <stdio.h>
+#include <algorithm>
+
 
 //DEFINITION DES CLASSES
 
@@ -106,18 +114,36 @@ public:
 Vector C,u;
 
 };
+
+
+// OBJET
+class Objet {
+public: 
+	Objet() {};
+	//méthode virtuelle de l'objet englobant
+	virtual bool intersect(const Ray& r , Vector& P, Vector& N, double& t) const =0;
+
+
+	Vector albedo;
+	bool miroir = false;
+	bool transparent;
+
+};
  
 
 //SPHERE (CENTRE, RAYON, ALBEDO, MIROIR, TRANSPARENCE) 
-class Sphere {
+class Sphere : public Objet {
 public:
-	Sphere( const Vector& O, const double R, const Vector& rho, const bool &reflect, const bool &transparent) : O(O),R(R),rho(rho),reflect(reflect),transparent(transparent){
+	Sphere( const Vector& O, const double R, const Vector& couleur,bool miroir = false, bool transp = false) : O(O),R(R){
+		albedo = couleur;
+		miroir = miroir; 
+		transparent = transp;
 
 };
 
 	
 	//Routine d'intersection qui teste si un rayon touche la sphère
-	bool intersect(const Ray& r , Vector& P, Vector& N, double& t) {
+	bool intersect(const Ray& r , Vector& P, Vector& N, double& t) const{
 		//solve a*t^2 +b*t +c = 0
 		double a =1;
 		double b= 2*dot(r.u , r.C - O );
@@ -152,38 +178,289 @@ public:
 	}
 		double R=R;
 		Vector O=O;
-		Vector rho=rho;
-		bool reflect=reflect;
-		bool transparent; 
+		
+};
+
+class Triangle : public Objet {
+public:
+	Triangle(const Vector &A, const Vector &B, const Vector &C, const Vector &couleur, bool miroir =false, bool transp = false) : A(A), B(B), C(C) {
+		albedo = couleur;
+		miroir = miroir;
+		transparent = transp;
+	};
+
+	bool intersect(const Ray& r , Vector& P, Vector& N, double& t) const {
+
+		N = cross(B-A,C-A);
+		N.normalize();
+		t = dot(C-r.C,N) / dot(r.u,N);
+		if (t < 0) return false; 
+
+		P = r.C + t*r.u;
+		Vector a = B-A;
+		Vector b = C-A;
+		Vector c = P-A;
+
+		double m11 = a.norm2();
+		double m12 = dot(a,b);
+		double m22 = b.norm2();
+		double detm = m11*m22 - m12*m12;
+
+		double b11 = dot(c,a);
+		double b21 = dot(c,b);
+		double detb = b11*m22 - b21*m12;
+		double beta = detb/detm; //coordonnée barycentrique B
+
+		double g12 = b11;
+		double g22 = b21;
+		double detg = m11*g22 - m12*g12;
+		double gamma = detg/detm; //coordonnée barycentrique C
+
+		double alpha = 1 - beta - gamma;
+		if(alpha<0 || alpha>1) return false;
+		if(beta<0 || beta>1) return false;
+		if(gamma < 0 || gamma>1) return false;
+		if(alpha+beta+gamma>1) return false; //incorrect --corrigé plus tard
+
+
+		return true;
+	}
+
+	Vector A,B,C;
 
 };
 
-// SCENE(SPEHRES)
+
+// OBJ FILE READER
+
+// INDICE TRIANGLES
+class TriangleIndices {
+public:
+	TriangleIndices(int vtxi = -1, int vtxj = -1, int vtxk = -1, int ni = -1, int nj = -1, int nk = -1, int uvi = -1, int uvj = -1, int uvk = -1, int group = -1, bool added = false) : vtxi(vtxi), vtxj(vtxj), vtxk(vtxk), uvi(uvi), uvj(uvj), uvk(uvk), ni(ni), nj(nj), nk(nk), group(group) {
+	};
+	int vtxi, vtxj, vtxk; // indices within the vertex coordinates array
+	int uvi, uvj, uvk;  // indices within the uv coordinates array
+	int ni, nj, nk;  // indices within the normals array
+	int group;       // face group
+};
+
+
+// MESH
+class TriangleMesh {
+public:
+  ~TriangleMesh() {}
+	TriangleMesh() {};
+	
+	void readOBJ(const char* obj) {
+
+		char matfile[255];
+		char grp[255];
+
+		FILE* f;
+		f = fopen(obj, "r");
+		int curGroup = -1;
+		while (!feof(f)) {
+			char line[255];
+			if (!fgets(line, 255, f)) break;
+
+			std::string linetrim(line);
+			linetrim.erase(linetrim.find_last_not_of(" \r\t") + 1);
+			strcpy(line, linetrim.c_str());
+
+			if (line[0] == 'u' && line[1] == 's') {
+				sscanf(line, "usemtl %[^\n]\n", grp);
+				curGroup++;
+			}
+
+			if (line[0] == 'v' && line[1] == ' ') {
+				Vector vec;
+
+				Vector col;
+				if (sscanf(line, "v %lf %lf %lf %lf %lf %lf\n", &vec[0], &vec[1], &vec[2], &col[0], &col[1], &col[2]) == 6) {
+					col[0] = std::min(1., std::max(0., col[0]));
+					col[1] = std::min(1., std::max(0., col[1]));
+					col[2] = std::min(1., std::max(0., col[2]));
+
+					vertices.push_back(vec);
+					vertexcolors.push_back(col);
+
+				} else {
+					sscanf(line, "v %lf %lf %lf\n", &vec[0], &vec[1], &vec[2]);
+					vertices.push_back(vec);
+				}
+			}
+			if (line[0] == 'v' && line[1] == 'n') {
+				Vector vec;
+				sscanf(line, "vn %lf %lf %lf\n", &vec[0], &vec[1], &vec[2]);
+				normals.push_back(vec);
+			}
+			if (line[0] == 'v' && line[1] == 't') {
+				Vector vec;
+				sscanf(line, "vt %lf %lf\n", &vec[0], &vec[1]);
+				uvs.push_back(vec);
+			}
+			if (line[0] == 'f') {
+				TriangleIndices t;
+				int i0, i1, i2, i3;
+				int j0, j1, j2, j3;
+				int k0, k1, k2, k3;
+				int nn;
+				t.group = curGroup;
+
+				char* consumedline = line + 1;
+				int offset;
+
+				nn = sscanf(consumedline, "%u/%u/%u %u/%u/%u %u/%u/%u%n", &i0, &j0, &k0, &i1, &j1, &k1, &i2, &j2, &k2, &offset);
+				if (nn == 9) {
+					if (i0 < 0) t.vtxi = vertices.size() + i0; else	t.vtxi = i0 - 1;
+					if (i1 < 0) t.vtxj = vertices.size() + i1; else	t.vtxj = i1 - 1;
+					if (i2 < 0) t.vtxk = vertices.size() + i2; else	t.vtxk = i2 - 1;
+					if (j0 < 0) t.uvi = uvs.size() + j0; else	t.uvi = j0 - 1;
+					if (j1 < 0) t.uvj = uvs.size() + j1; else	t.uvj = j1 - 1;
+					if (j2 < 0) t.uvk = uvs.size() + j2; else	t.uvk = j2 - 1;
+					if (k0 < 0) t.ni = normals.size() + k0; else	t.ni = k0 - 1;
+					if (k1 < 0) t.nj = normals.size() + k1; else	t.nj = k1 - 1;
+					if (k2 < 0) t.nk = normals.size() + k2; else	t.nk = k2 - 1;
+					indices.push_back(t);
+				} else {
+					nn = sscanf(consumedline, "%u/%u %u/%u %u/%u%n", &i0, &j0, &i1, &j1, &i2, &j2, &offset);
+					if (nn == 6) {
+						if (i0 < 0) t.vtxi = vertices.size() + i0; else	t.vtxi = i0 - 1;
+						if (i1 < 0) t.vtxj = vertices.size() + i1; else	t.vtxj = i1 - 1;
+						if (i2 < 0) t.vtxk = vertices.size() + i2; else	t.vtxk = i2 - 1;
+						if (j0 < 0) t.uvi = uvs.size() + j0; else	t.uvi = j0 - 1;
+						if (j1 < 0) t.uvj = uvs.size() + j1; else	t.uvj = j1 - 1;
+						if (j2 < 0) t.uvk = uvs.size() + j2; else	t.uvk = j2 - 1;
+						indices.push_back(t);
+					} else {
+						nn = sscanf(consumedline, "%u %u %u%n", &i0, &i1, &i2, &offset);
+						if (nn == 3) {
+							if (i0 < 0) t.vtxi = vertices.size() + i0; else	t.vtxi = i0 - 1;
+							if (i1 < 0) t.vtxj = vertices.size() + i1; else	t.vtxj = i1 - 1;
+							if (i2 < 0) t.vtxk = vertices.size() + i2; else	t.vtxk = i2 - 1;
+							indices.push_back(t);
+						} else {
+							nn = sscanf(consumedline, "%u//%u %u//%u %u//%u%n", &i0, &k0, &i1, &k1, &i2, &k2, &offset);
+							if (i0 < 0) t.vtxi = vertices.size() + i0; else	t.vtxi = i0 - 1;
+							if (i1 < 0) t.vtxj = vertices.size() + i1; else	t.vtxj = i1 - 1;
+							if (i2 < 0) t.vtxk = vertices.size() + i2; else	t.vtxk = i2 - 1;
+							if (k0 < 0) t.ni = normals.size() + k0; else	t.ni = k0 - 1;
+							if (k1 < 0) t.nj = normals.size() + k1; else	t.nj = k1 - 1;
+							if (k2 < 0) t.nk = normals.size() + k2; else	t.nk = k2 - 1;
+							indices.push_back(t);
+						}
+					}
+				}
+
+				consumedline = consumedline + offset;
+
+				while (true) {
+					if (consumedline[0] == '\n') break;
+					if (consumedline[0] == '\0') break;
+					nn = sscanf(consumedline, "%u/%u/%u%n", &i3, &j3, &k3, &offset);
+					TriangleIndices t2;
+					t2.group = curGroup;
+					if (nn == 3) {
+						if (i0 < 0) t2.vtxi = vertices.size() + i0; else	t2.vtxi = i0 - 1;
+						if (i2 < 0) t2.vtxj = vertices.size() + i2; else	t2.vtxj = i2 - 1;
+						if (i3 < 0) t2.vtxk = vertices.size() + i3; else	t2.vtxk = i3 - 1;
+						if (j0 < 0) t2.uvi = uvs.size() + j0; else	t2.uvi = j0 - 1;
+						if (j2 < 0) t2.uvj = uvs.size() + j2; else	t2.uvj = j2 - 1;
+						if (j3 < 0) t2.uvk = uvs.size() + j3; else	t2.uvk = j3 - 1;
+						if (k0 < 0) t2.ni = normals.size() + k0; else	t2.ni = k0 - 1;
+						if (k2 < 0) t2.nj = normals.size() + k2; else	t2.nj = k2 - 1;
+						if (k3 < 0) t2.nk = normals.size() + k3; else	t2.nk = k3 - 1;
+						indices.push_back(t2);
+						consumedline = consumedline + offset;
+						i2 = i3;
+						j2 = j3;
+						k2 = k3;
+					} else {
+						nn = sscanf(consumedline, "%u/%u%n", &i3, &j3, &offset);
+						if (nn == 2) {
+							if (i0 < 0) t2.vtxi = vertices.size() + i0; else	t2.vtxi = i0 - 1;
+							if (i2 < 0) t2.vtxj = vertices.size() + i2; else	t2.vtxj = i2 - 1;
+							if (i3 < 0) t2.vtxk = vertices.size() + i3; else	t2.vtxk = i3 - 1;
+							if (j0 < 0) t2.uvi = uvs.size() + j0; else	t2.uvi = j0 - 1;
+							if (j2 < 0) t2.uvj = uvs.size() + j2; else	t2.uvj = j2 - 1;
+							if (j3 < 0) t2.uvk = uvs.size() + j3; else	t2.uvk = j3 - 1;
+							consumedline = consumedline + offset;
+							i2 = i3;
+							j2 = j3;
+							indices.push_back(t2);
+						} else {
+							nn = sscanf(consumedline, "%u//%u%n", &i3, &k3, &offset);
+							if (nn == 2) {
+								if (i0 < 0) t2.vtxi = vertices.size() + i0; else	t2.vtxi = i0 - 1;
+								if (i2 < 0) t2.vtxj = vertices.size() + i2; else	t2.vtxj = i2 - 1;
+								if (i3 < 0) t2.vtxk = vertices.size() + i3; else	t2.vtxk = i3 - 1;
+								if (k0 < 0) t2.ni = normals.size() + k0; else	t2.ni = k0 - 1;
+								if (k2 < 0) t2.nj = normals.size() + k2; else	t2.nj = k2 - 1;
+								if (k3 < 0) t2.nk = normals.size() + k3; else	t2.nk = k3 - 1;								
+								consumedline = consumedline + offset;
+								i2 = i3;
+								k2 = k3;
+								indices.push_back(t2);
+							} else {
+								nn = sscanf(consumedline, "%u%n", &i3, &offset);
+								if (nn == 1) {
+									if (i0 < 0) t2.vtxi = vertices.size() + i0; else	t2.vtxi = i0 - 1;
+									if (i2 < 0) t2.vtxj = vertices.size() + i2; else	t2.vtxj = i2 - 1;
+									if (i3 < 0) t2.vtxk = vertices.size() + i3; else	t2.vtxk = i3 - 1;
+									consumedline = consumedline + offset;
+									i2 = i3;
+									indices.push_back(t2);
+								} else {
+									consumedline = consumedline + 1;
+								}
+							}
+						}
+					}
+				}
+
+			}
+
+		}
+		fclose(f);
+
+	}
+
+	std::vector<TriangleIndices> indices;
+	std::vector<Vector> vertices;
+	std::vector<Vector> normals;
+	std::vector<Vector> uvs;
+	std::vector<Vector> vertexcolors;
+	
+};
+
+
+
+// SCENE(OBJET)
 class Scene{
 	public:
 	Scene(){};
 
 	// AJOUT D'UNE SPHERE DANS LA SCENE
-	void addSphere(const Sphere& s) {spheres.push_back(s);}
-
+	void addSphere(const Sphere& s) {objets.push_back((Objet*)&s);}
+	void addTriangle(const Triangle& obj) {objets.push_back((Objet*)&obj);}
 
 	// ROUTINE D'INTERSECTION ENTRE UN RAYON ET TOUTES LES SPHERES DE LA SCENE
-	bool intersect_scene(const Ray& r , Vector& P, Vector& N, int &rang_sphere, double &t_min){
+	bool intersect_scene(const Ray& r , Vector& P, Vector& N, int &rang_obj, double &t_min){
 
 		bool inter_scene = false;
 		t_min=1E99;
 
-		for (int i=0;i<spheres.size();i++){
-			Vector P_sphere, N_sphere;
+		for (int i=0;i<objets.size();i++){
+			Vector P_obj, N_obj;
 			double t;
-			bool inter_sphere = spheres[i].intersect(r,P_sphere,N_sphere,t);
-			if(inter_sphere){
+			bool inter_obj = objets[i]->intersect(r,P_obj,N_obj,t);
+			if(inter_obj){
 				inter_scene=true;
 				if(t<t_min){
 					t_min=t;
-					P = P_sphere;
-					N= N_sphere;
-					rang_sphere=i;
+					P = P_obj;
+					N= N_obj;
+					rang_obj=i;
 				}
 			}
 		}
@@ -205,18 +482,19 @@ class Scene{
 	else{ //Nombre de rebond max non dépassé
 		
 		Vector P,N;
-		int rang_sphere;
+		int rang_obj;
 		double t_min;
-		bool inter = intersect_scene(r,P,N,rang_sphere,t_min);
+		bool inter = intersect_scene(r,P,N,rang_obj,t_min);
 
-		if (inter){ //le rayon intersecte avec un sphere de la scène
+		if (inter){ //le rayon intersecte avec un spherecou un triangle de la scène
+
 
 			Vector l = (lumiere_position - P);
 			l.normalize();
 
 			// LA SPHERE EST MIROIR
-			if(spheres[rang_sphere].reflect){
-
+			if(objets[rang_obj]->miroir){
+				std::cout << "M";
 				Vector vector_reflect = r.u - 2*dot(r.u,N)*N;
 				Ray rayon_reflect = Ray(P+N*0.001,vector_reflect);
 				return getColor(rayon_reflect,rebond-1);
@@ -225,8 +503,8 @@ class Scene{
 			else{
 
 				// .A SPHERE EST TRANSPARENTE
-				if(spheres[rang_sphere].transparent){
-
+				if(objets[rang_obj]->transparent){
+					std::cout << "T";
 					double n1 = 1;
 					double n2 = 1.3;
 					Vector N_transp = N;
@@ -259,14 +537,14 @@ class Scene{
 				int rang_sphere_lum;
 				if(intersect_scene(Ray(P+0.001*N,l),P_lum,N_lum,rang_sphere_lum,t_min_lum))
 				{
-					
+					 
 					if (t_min_lum < sqrt((lumiere_position - P).norm2())){ //objet devant la lumière donc ombre
 						intensite_pixel = Vector(0,0,0);
 						
 					}
 
 					else{ //objet derrière = pas d'ombre
-						intensite_pixel = spheres[rang_sphere].rho * lumiere_intensite *dot(l,N) / (4 * M_PI * (lumiere_position - P).norm2());
+						intensite_pixel = objets[rang_obj]->albedo * lumiere_intensite *dot(l,N) / (4 * M_PI * (lumiere_position - P).norm2());
 						
 					}
 				}
@@ -274,7 +552,7 @@ class Scene{
 				else{ //pas d'objet rencontré = pas d'ombre
 
 					//intensite_pixel = intensite_lumiere * std::max(0.,dot(l,N)) / (4 * M_PI * (lumiere_position - P).norm2());
-					intensite_pixel = spheres[rang_sphere].rho * lumiere_intensite * dot(l,N) / (4 * M_PI * (lumiere_position - P).norm2());
+					intensite_pixel = objets[rang_obj]->albedo * lumiere_intensite * dot(l,N) / (4 * M_PI * (lumiere_position - P).norm2());
 				
 				}
 
@@ -292,7 +570,7 @@ class Scene{
 				Vector direction_random = direction_random_local[2]*N + direction_random_local[0]*tangente1 + direction_random_local[1]*tangente2;
 				Ray rayon_random(P + 0.001*N, direction_random)	;			
 
-				return intensite_pixel+getColor(rayon_random,rebond-1)*spheres[rang_sphere].rho;
+				return intensite_pixel+getColor(rayon_random,rebond-1)*objets[rang_obj]->albedo;
 
 			}
 			}
@@ -308,7 +586,7 @@ class Scene{
 	}
 };
 
-	std::vector<Sphere> spheres;
+	std::vector<Objet*> objets;
 	Vector lumiere_position;
 	double lumiere_intensite;
 
@@ -324,14 +602,14 @@ class Scene{
 int main() {
 
 	// RESOLUTION DE L'IMAGE
-	int W = 1024;
-	int H = 1024;
+	int W = 512;
+	int H = 512;
 
 	//Monte Carlo
-	const int Nb_rayons=16;
+	const int Nb_rayons=8;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "eclairage_indirect_8_rayons.png";
+	const char* nom_image = "test_triangle.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
@@ -346,6 +624,14 @@ int main() {
 	Sphere s7(Vector(-1000,0,0),1000-50,Vector(0,1,1),false,false); //mur de gauche
 	Sphere s8(Vector(0,1000,0),1000-50,Vector(1,0,0),false,false); //plafond
 
+
+	//TRIANGLE:
+	Vector T1(-10,-10,-20);
+	Vector T2(10,-10,-20);
+	Vector T3(0,10,-20);
+	Triangle triangle_test(T1,T2,T3,Vector(1,0,0));
+
+
 	Scene scene;
 
 	scene.addSphere(s1);
@@ -356,6 +642,8 @@ int main() {
 	scene.addSphere(s6);
 	scene.addSphere(s7);
 	scene.addSphere(s8);
+
+	scene.addTriangle(triangle_test);
 
 	// NOMBRE DE REBONDS MAX POUR LES SPHERES MIROIRS
 	int nb_rebond_max = 10; //scene.spheres.size();
@@ -373,6 +661,7 @@ int main() {
 
 	// CALCUL DE L'IMAGE
 	std::vector<unsigned char> image(W * H * 3, 0);
+	
 
 #pragma cmp parallel for
 	for (int i = 0; i < H; i++) {
