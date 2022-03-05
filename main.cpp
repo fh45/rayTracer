@@ -8,6 +8,7 @@ x Ombre portée des sphères
 X Surface diffuse
 X Surface Speculaire 
 x Eclairage indirect avec Monte Carlo
+xChronomètre
 
 
 -----Bugs-----
@@ -29,6 +30,9 @@ x Surfaces transparentes
 #include <iostream>
 
 #include <random>
+
+#include <chrono>
+using namespace std::chrono;
 
 std::default_random_engine engine; 
 std::uniform_real_distribution<double> uniform(0,1);
@@ -125,8 +129,8 @@ public:
 
 
 	Vector albedo;
-	bool miroir = false;
-	bool transparent;
+	bool objet_miroir;
+	bool objet_transparent;
 
 };
  
@@ -136,8 +140,8 @@ class Sphere : public Objet {
 public:
 	Sphere( const Vector& O, const double R, const Vector& couleur,bool miroir = false, bool transp = false) : O(O),R(R){
 		albedo = couleur;
-		miroir = miroir; 
-		transparent = transp;
+		objet_miroir = miroir; 
+		objet_transparent = transp;
 
 };
 
@@ -185,8 +189,8 @@ class Triangle : public Objet {
 public:
 	Triangle(const Vector &A, const Vector &B, const Vector &C, const Vector &couleur, bool miroir =false, bool transp = false) : A(A), B(B), C(C) {
 		albedo = couleur;
-		miroir = miroir;
-		transparent = transp;
+		objet_miroir = miroir;
+		objet_transparent = transp;
 	};
 
 	bool intersect(const Ray& r , Vector& P, Vector& N, double& t) const {
@@ -483,7 +487,7 @@ class Scene{
 		
 		Vector P,N;
 		int rang_obj;
-		double t_min;
+		double t_min; 
 		bool inter = intersect_scene(r,P,N,rang_obj,t_min);
 
 		if (inter){ //le rayon intersecte avec un spherecou un triangle de la scène
@@ -493,8 +497,8 @@ class Scene{
 			l.normalize();
 
 			// LA SPHERE EST MIROIR
-			if(objets[rang_obj]->miroir){
-				std::cout << "M";
+			if(objets[rang_obj]->objet_miroir){
+				//std::cout << "M";
 				Vector vector_reflect = r.u - 2*dot(r.u,N)*N;
 				Ray rayon_reflect = Ray(P+N*0.001,vector_reflect);
 				return getColor(rayon_reflect,rebond-1);
@@ -502,9 +506,9 @@ class Scene{
 
 			else{
 
-				// .A SPHERE EST TRANSPARENTE
-				if(objets[rang_obj]->transparent){
-					std::cout << "T";
+				// LA SPHERE EST TRANSPARENTE
+				if(objets[rang_obj]->objet_transparent){
+					//std::cout << "T";
 					double n1 = 1;
 					double n2 = 1.3;
 					Vector N_transp = N;
@@ -528,7 +532,7 @@ class Scene{
 
 
 				else{ //LA SPHERE EST QUELCONQUE
-
+				
 				// ECLAIRAGE DIRECT
 
 				//On envoie un rayon vers la source de lumière pour voir si on a une ombre (objet de la scène rencontré)
@@ -558,7 +562,7 @@ class Scene{
 
 				
 				// ECLAIRAGE INDIRECT
-				
+				/*
 				double r1 = uniform(engine);
 				double r2 = uniform(engine);
 
@@ -571,6 +575,8 @@ class Scene{
 				Ray rayon_random(P + 0.001*N, direction_random)	;			
 
 				return intensite_pixel+getColor(rayon_random,rebond-1)*objets[rang_obj]->albedo;
+				*/
+				return intensite_pixel;
 
 			}
 			}
@@ -600,23 +606,24 @@ class Scene{
 
 // MAIN 
 int main() {
+	auto start = high_resolution_clock::now();
 
 	// RESOLUTION DE L'IMAGE
 	int W = 512;
 	int H = 512;
 
 	//Monte Carlo
-	const int Nb_rayons=8;
+	const int Nb_rayons=1;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "test_triangle.png";
+	const char* nom_image = "test_miroir.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
 
 	// CREATION DE LA SCENE
 
-	Sphere s1(Vector(0,10,0),5,Vector(0,1,1),false,false); //albedo vert (couleur de la sphère)
+	Sphere s1(Vector(0,10,0),5,Vector(0.2,0.1,0.2),true,false); //albedo vert (couleur de la sphère)
 	//Sphere s2(Vector(20,20,20),5,Vector(1,0,0),false); //albedo rouge (couleur de la sphère)
 	Sphere s3(Vector(0,0,-1000),1000-80,Vector(1,0,1),false,false); //mur du fond 
 	Sphere s5(Vector(0,-1000,0),1000-10,Vector(1,1,0),false,false); //sol  
@@ -643,7 +650,7 @@ int main() {
 	scene.addSphere(s7);
 	scene.addSphere(s8);
 
-	scene.addTriangle(triangle_test);
+	//scene.addTriangle(triangle_test);
 
 	// NOMBRE DE REBONDS MAX POUR LES SPHERES MIROIRS
 	int nb_rebond_max = 10; //scene.spheres.size();
@@ -681,6 +688,7 @@ int main() {
 			//Vector intensite_pixel = scene.getColor(r,nb_rebond_max);
 
 			//STOCKAGE DANS L'IMAGE
+			//Correction gamma avec la puissance 1/2.2
 			image[(i * W + j) * 3 + 0] = std::min(255.,std::max(0., std::pow(pixel[0],1/2.2)));
 			image[(i * W + j) * 3 + 1] = std::min(255.,std::max(0.,std::pow(pixel[1],1/2.2)));
 			image[(i * W + j) * 3 + 2] = std::min(255.,std::max(0.,std::pow(pixel[2],1/2.2)));
@@ -692,6 +700,9 @@ int main() {
 		}
 	}
 	stbi_write_png(nom_image, W, H, 3, &image[0], 0);
+	auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<milliseconds>(stop - start);
+    std::cout << duration.count() << " ms"<< std::endl ;
 
 	return 0;
 }
