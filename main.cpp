@@ -616,14 +616,14 @@ int main() {
 	const int Nb_rayons=1;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "test_miroir.png";
+	const char* nom_image = "test_triangle.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
 
 	// CREATION DE LA SCENE
 
-	Sphere s1(Vector(0,10,0),5,Vector(0.2,0.1,0.2),true,false); //albedo vert (couleur de la sphère)
+	Sphere s1(Vector(0,10,0),5,Vector(0.2,0.1,0.2),false,false); //albedo vert (couleur de la sphère)
 	//Sphere s2(Vector(20,20,20),5,Vector(1,0,0),false); //albedo rouge (couleur de la sphère)
 	Sphere s3(Vector(0,0,-1000),1000-80,Vector(1,0,1),false,false); //mur du fond 
 	Sphere s5(Vector(0,-1000,0),1000-10,Vector(1,1,0),false,false); //sol  
@@ -650,7 +650,7 @@ int main() {
 	scene.addSphere(s7);
 	scene.addSphere(s8);
 
-	//scene.addTriangle(triangle_test);
+	scene.addTriangle(triangle_test);
 
 	// NOMBRE DE REBONDS MAX POUR LES SPHERES MIROIRS
 	int nb_rebond_max = 10; //scene.spheres.size();
@@ -670,7 +670,7 @@ int main() {
 	std::vector<unsigned char> image(W * H * 3, 0);
 	
 
-#pragma cmp parallel for
+//#pragma cmp parallel for
 	for (int i = 0; i < H; i++) {
 		for (int j = 0; j < W; j++) {
 
