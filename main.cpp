@@ -8,7 +8,11 @@ x Ombre portée des sphères
 X Surface diffuse
 X Surface Speculaire 
 x Eclairage indirect avec Monte Carlo
-xChronomètre
+x Chronomètre
+x Anti-aliasing
+x Multithread
+x Ombres douces / soruces de lumière diffuses
+x Profondeur de champ/ Diaphragme camera
 
 
 -----Bugs-----
