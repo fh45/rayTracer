@@ -533,8 +533,8 @@ class Scene{
 
 				else{ //LA SPHERE EST QUELCONQUE
 				
-				// ECLAIRAGE DIRECT
-
+				// ECLAIRAGE DIRECT PONCTUEL
+				/*
 				//On envoie un rayon vers la source de lumière pour voir si on a une ombre (objet de la scène rencontré)
 				Vector P_lum,N_lum;
 				double t_min_lum;
@@ -559,20 +559,68 @@ class Scene{
 					intensite_pixel = objets[rang_obj]->albedo * lumiere_intensite * dot(l,N) / (4 * M_PI * (lumiere_position - P).norm2());
 				
 				}
+				
+				*/
+				// ECLAIRAGE DIRECT DIFFUS
+				
+				double random_1_direct = uniform(engine);
+				double random_2_direct = uniform(engine);
 
+				Vector central_vector = (P-lumiere_position);
+				central_vector.normalize();
+
+				//vecteurs aléatoires
+				Vector direction_random_local_direct(cos(2*M_PI*random_1_direct)*sqrt(1-random_2_direct),sin(2*M_PI*random_1_direct)*sqrt(1-random_2_direct),sqrt(random_2_direct))  ;
+				Vector vector_random_direct(uniform(engine)-0.5,uniform(engine)-0.5,uniform(engine)-0.5);
+
+				//changement de repère
+				Vector tangente1_direct = cross(central_vector,vector_random_direct); 
+				tangente1_direct.normalize();
+				Vector tangente2_direct= cross(tangente1_direct,central_vector);
+
+				Vector direction_random_direct = direction_random_local_direct[2]*central_vector + direction_random_local_direct[0]*tangente1_direct + direction_random_local_direct[1]*tangente2_direct;
+				
+				Vector point_random_lum = direction_random_direct * lumiere_rayon + lumiere_position;
+
+				Vector w_i = (point_random_lum - P);
+				w_i.normalize();
+
+				//Visibilite
+
+				//On envoie un rayon vers la source de lumière pour voir si on a une ombre (objet de la scène rencontré)
+				Vector P_lum,N_lum;
+				double t_min_lum;
+				int rang_sphere_lum;
+				int visibilite=1;
+				if(intersect_scene(Ray(P+0.001*N,w_i),P_lum,N_lum,rang_sphere_lum,t_min_lum))
+				{
+					 
+					if (t_min_lum < sqrt((lumiere_position - P).norm2())){ //objet devant la lumière donc ombre
+						
+						visibilite=0;
+					}
+
+				}
+
+
+				intensite_pixel = objets[rang_obj]->albedo *(lumiere_intensite / (4*M_PI*(lumiere_position - P).norm2())*std::max(0.,dot(N,w_i))*std::max(0.,dot(direction_random_direct,(Vector(0,0,0)-w_i))) / dot(central_vector,direction_random_direct)*visibilite);
 				
 				// ECLAIRAGE INDIRECT
 				
-				double r1 = uniform(engine);
-				double r2 = uniform(engine);
+				double random_1 = uniform(engine);
+				double random_2 = uniform(engine);
 
-				Vector direction_random_local(cos(2*M_PI*r1)*sqrt(1-r2),sin(2*M_PI*r1)*sqrt(1-r2),sqrt(r2))  ;
+				//vecteurs aléatoires
+				Vector direction_random_local(cos(2*M_PI*random_1)*sqrt(1-random_2),sin(2*M_PI*random_1)*sqrt(1-random_2),sqrt(random_2))  ;
 				Vector vector_random(uniform(engine)-0.5,uniform(engine)-0.5,uniform(engine)-0.5);
-				Vector tangente1 = cross(N,vector_random); tangente1.normalize();
-				Vector tangente2= cross(tangente1,N);
 
-				Vector direction_random = direction_random_local[2]*N + direction_random_local[0]*tangente1 + direction_random_local[1]*tangente2;
-				Ray rayon_random(P + 0.001*N, direction_random)	;			
+				//changement de repère
+				Vector tangente1_indirect = cross(N,vector_random); 
+				tangente1_indirect.normalize();
+				Vector tangente2_indirect= cross(tangente1_indirect,N);
+
+				Vector direction_random_indirect = direction_random_local[2]*N + direction_random_local[0]*tangente1_indirect + direction_random_local[1]*tangente2_indirect;
+				Ray rayon_random(P + 0.001*N, direction_random_indirect)	;			
 
 				return intensite_pixel+getColor(rayon_random,rebond-1)*objets[rang_obj]->albedo;
 				
@@ -595,6 +643,7 @@ class Scene{
 	std::vector<Objet*> objets;
 	Vector lumiere_position;
 	double lumiere_intensite;
+	double lumiere_rayon;
 
 };
 
@@ -616,7 +665,7 @@ int main() {
 	const int Nb_rayons=100;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "test_antialiasing_100_rayons.png";
+	const char* nom_image = "aperture_5_100rays.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
@@ -624,10 +673,11 @@ int main() {
 	// CREATION DE LA SCENE
 
 	Sphere s1(Vector(0,0,30),5,Vector(1,0,0),false,false); //albedo vert (couleur de la sphère)
-	//Sphere s2(Vector(20,20,20),5,Vector(1,0,0),false); //albedo rouge (couleur de la sphère)
+	Sphere s2(Vector(6,10,20),5,Vector(0,1,0),false,false); //albedo rouge (couleur de la sphère)
+	Sphere s9(Vector(-7,-6,40),5,Vector(0,0,1),false,false); //albedo rouge (couleur de la sphère)
 	Sphere s3(Vector(0,0,-1000),1000-80,Vector(1,0,1),false,false); //mur du fond 
 	Sphere s5(Vector(0,-1000,0),1000-10,Vector(1,1,0),false,false); //sol  
-	Sphere s6(Vector(1000,0,0),1000-40,Vector(0,0,1),false,false); //mur de droite
+	Sphere s6(Vector(1000,0,0),1000-40,Vector(0.7,0.5,0.2),false,false); //mur de droite
 	Sphere s7(Vector(-1000,0,0),1000-50,Vector(0,1,1),false,false); //mur de gauche
 	Sphere s8(Vector(0,1000,0),1000-50,Vector(1,0,0),false,false); //plafond
 
@@ -642,13 +692,14 @@ int main() {
 	Scene scene;
 
 	scene.addSphere(s1);
-	//scene.addSphere(s2);
+	scene.addSphere(s2);
 	scene.addSphere(s3);
 	//scene.addSphere(s4);
 	scene.addSphere(s5);
 	scene.addSphere(s6);
 	scene.addSphere(s7);
 	scene.addSphere(s8);
+    scene.addSphere(s9);
 
 	//scene.addTriangle(triangle_test);
 
@@ -661,9 +712,11 @@ int main() {
 	double tanfov2 = tan(fov/2);
 
 	
-	// LUMIERE POSITION ET INTENSITE
+	// LUMIERE POSITION ET INTENSITE ET RAYON POUR LES SOURCES DIFFUSES
 	scene.lumiere_position = Vector(-20,40,80);
 	scene.lumiere_intensite = 8000000000;
+	scene.lumiere_rayon = 7;
+
 
 
 	// CALCUL DE L'IMAGE
@@ -683,15 +736,37 @@ int main() {
 				
 			//CREATION DU RAYON POUR CHAQUE PIXEL
 
+
+				//Box-Muller pour antialiasing
 				double random_Muller_1 = uniform(engine);
 				double random_Muller_2 = uniform(engine);
 
 				double dx = sqrt(-2*log(random_Muller_1))*cos(2*M_PI*random_Muller_2);
 				double dy = sqrt(-2*log(random_Muller_1))*sin(2*M_PI*random_Muller_2);
 
+
+				//MODELE D'OUVERTURE DIAPHRAGME
+
+				double ouverture_diaph=5;
+
+				double distance_map=25;
+
+				double x_diaph = (uniform(engine)-0.5)*2*ouverture_diaph;
+				double y_diaph = (uniform(engine)-0.5)*2*ouverture_diaph;
+
+
 				Vector u(j-W/2+0.5+dx, H-i-H/2+0.5+dy,-W/(2*tanfov2));
 				u.normalize();
-				Ray r(C,u);
+
+				Vector plan_net = C + distance_map*u;
+
+				Vector new_C = C+Vector(x_diaph,y_diaph,0);
+
+				Vector new_u = plan_net-new_C;
+				new_u.normalize();
+
+
+				Ray r(new_C,new_u);
 				
 				pixel = pixel + scene.getColor(r,nb_rebond_max)/Nb_rayons;
 			}
