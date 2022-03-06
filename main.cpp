@@ -562,7 +562,7 @@ class Scene{
 
 				
 				// ECLAIRAGE INDIRECT
-				/*
+				
 				double r1 = uniform(engine);
 				double r2 = uniform(engine);
 
@@ -575,7 +575,7 @@ class Scene{
 				Ray rayon_random(P + 0.001*N, direction_random)	;			
 
 				return intensite_pixel+getColor(rayon_random,rebond-1)*objets[rang_obj]->albedo;
-				*/
+				
 				return intensite_pixel;
 
 			}
@@ -613,17 +613,17 @@ int main() {
 	int H = 512;
 
 	//Monte Carlo
-	const int Nb_rayons=1;
+	const int Nb_rayons=100;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "test_triangle.png";
+	const char* nom_image = "test_antialiasing_100_rayons.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
 
 	// CREATION DE LA SCENE
 
-	Sphere s1(Vector(0,10,0),5,Vector(0.2,0.1,0.2),false,false); //albedo vert (couleur de la sphère)
+	Sphere s1(Vector(0,0,30),5,Vector(1,0,0),false,false); //albedo vert (couleur de la sphère)
 	//Sphere s2(Vector(20,20,20),5,Vector(1,0,0),false); //albedo rouge (couleur de la sphère)
 	Sphere s3(Vector(0,0,-1000),1000-80,Vector(1,0,1),false,false); //mur du fond 
 	Sphere s5(Vector(0,-1000,0),1000-10,Vector(1,1,0),false,false); //sol  
@@ -650,7 +650,7 @@ int main() {
 	scene.addSphere(s7);
 	scene.addSphere(s8);
 
-	scene.addTriangle(triangle_test);
+	//scene.addTriangle(triangle_test);
 
 	// NOMBRE DE REBONDS MAX POUR LES SPHERES MIROIRS
 	int nb_rebond_max = 10; //scene.spheres.size();
@@ -670,21 +670,31 @@ int main() {
 	std::vector<unsigned char> image(W * H * 3, 0);
 	
 
-//#pragma cmp parallel for
+#pragma omp parallel for
 	for (int i = 0; i < H; i++) {
 		for (int j = 0; j < W; j++) {
 
-			//CREATION DU RAYON POUR CHAQUE PIXEL
-			Vector u(j-W/2+0.5, H-i-H/2+0.5,-W/(2*tanfov2));
-			u.normalize();
-			Ray r(C,u);
+			
 
 			//RECUPERATION DE LA COULEUR DU RAYON
 			
 			Vector pixel(0.,0.,0.);
-			for (int k=0; k<Nb_rayons;k++)
-				pixel = pixel + scene.getColor(r,nb_rebond_max)/Nb_rayons;
+			for (int k=0; k<Nb_rayons;k++){
+				
+			//CREATION DU RAYON POUR CHAQUE PIXEL
 
+				double random_Muller_1 = uniform(engine);
+				double random_Muller_2 = uniform(engine);
+
+				double dx = sqrt(-2*log(random_Muller_1))*cos(2*M_PI*random_Muller_2);
+				double dy = sqrt(-2*log(random_Muller_1))*sin(2*M_PI*random_Muller_2);
+
+				Vector u(j-W/2+0.5+dx, H-i-H/2+0.5+dy,-W/(2*tanfov2));
+				u.normalize();
+				Ray r(C,u);
+				
+				pixel = pixel + scene.getColor(r,nb_rebond_max)/Nb_rayons;
+			}
 			//Vector intensite_pixel = scene.getColor(r,nb_rebond_max);
 
 			//STOCKAGE DANS L'IMAGE
@@ -701,8 +711,11 @@ int main() {
 	}
 	stbi_write_png(nom_image, W, H, 3, &image[0], 0);
 	auto stop = high_resolution_clock::now();
-    auto duration = duration_cast<milliseconds>(stop - start);
-    std::cout << duration.count() << " ms"<< std::endl ;
+    auto duration = duration_cast<seconds>(stop - start);
+    std::cout << duration.count() << " s"<< std::endl ;
 
 	return 0;
 }
+
+
+//Pour utilisation multithreads compiler avec : g++ main.cpp -lm -fopenmp
