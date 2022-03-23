@@ -1,4 +1,4 @@
-/*VERSION DU 07/02
+/*VERSION DU 23/02
 
 ---Fonctionnalités---
 x Affichage d'une sphère
@@ -13,6 +13,7 @@ x Anti-aliasing
 x Multithread
 x Ombres douces / soruces de lumière diffuses
 x Profondeur de champ/ Diaphragme camera
+x Triangle
 
 
 -----Bugs-----
@@ -199,9 +200,9 @@ public:
 
 	bool intersect(const Ray& r , Vector& P, Vector& N, double& t) const {
 
-		N = cross(B-A,C-A);
+		N = cross(B-A,C-A); //Normale
 		N.normalize();
-		t = dot(C-r.C,N) / dot(r.u,N);
+		t = dot(C-r.C,N) / dot(r.u,N); //Intersection avec le plan
 		if (t < 0) return false; 
 
 		P = r.C + t*r.u;
@@ -209,26 +210,31 @@ public:
 		Vector b = C-A;
 		Vector c = P-A;
 
-		double m11 = a.norm2();
-		double m12 = dot(a,b);
-		double m22 = b.norm2();
-		double detm = m11*m22 - m12*m12;
+		//Point A
+		double a11 = a.norm2();
+		double a12 = dot(a,b);
+		double a22 = b.norm2();
+		double deta = a11*a22 - a12*a12;
 
+		//Point B
 		double b11 = dot(c,a);
 		double b21 = dot(c,b);
-		double detb = b11*m22 - b21*m12;
-		double beta = detb/detm; //coordonnée barycentrique B
+		double detb = b11*a22 - b21*a12;
+		double beta = detb/deta; 
 
-		double g12 = b11;
-		double g22 = b21;
-		double detg = m11*g22 - m12*g12;
-		double gamma = detg/detm; //coordonnée barycentrique C
+		//Point C
+		double c12 = b11;
+		double c22 = b21;
+		double detc = a11*c22 - a12*c12;
+		double gamma = detc/deta; 
 
 		double alpha = 1 - beta - gamma;
+
+		// Test intersection dans le triangle ou pas avec coordonnées barycentriques
 		if(alpha<0 || alpha>1) return false;
 		if(beta<0 || beta>1) return false;
 		if(gamma < 0 || gamma>1) return false;
-		if(alpha+beta+gamma>1) return false; //incorrect --corrigé plus tard
+		if(alpha+beta+gamma>1) return false; 
 
 
 		return true;
@@ -238,6 +244,52 @@ public:
 
 };
 
+
+// BOITE ENGLOBANTE
+
+class BoiteEnglobante{
+public:
+BoiteEnglobante(){};
+BoiteEnglobante(const Vector& mins_b, const Vector & maxs_b): mins_b(mins_b),maxs_b(maxs_b){};
+
+
+bool intersection_boite(const Ray& r)const{
+
+	//Plan x
+	double tx_1 = (mins_b[0]-r.C[0])/r.u[0];
+	double tx_2 = (maxs_b[0]-r.C[0])/r.u[0];
+	double tx_min = std::min(tx_1,tx_2);
+	double tx_max = std::max(tx_1,tx_2);
+
+	//Plan y
+	double ty_1 = (mins_b[1]-r.C[1])/r.u[1];
+	double ty_2 = (maxs_b[1]-r.C[1])/r.u[1];
+	double ty_min = std::min(ty_1,ty_2);
+	double ty_max = std::max(ty_1,ty_2);
+
+	//Plan z
+	double tz_1 = (mins_b[2]-r.C[2])/r.u[2];
+	double tz_2 = (maxs_b[2]-r.C[2])/r.u[2];
+	double tz_min = std::min(tz_1,tz_2);
+	double tz_max = std::max(tz_1,tz_2);
+
+	//test d'intersection des intervalles tx,ty,tz
+	
+	double min_des_maxs= std::min(std::min(tx_max,ty_max),tz_max);
+	double max_des_mins = std::max(std::min(tx_min,ty_min),tz_min);
+
+
+	if(min_des_maxs-max_des_mins>0){ //Si l'intersection des intervalles est positives la boite est touchée
+		return true;
+	}
+	return false;
+	
+} 
+
+Vector mins_b;
+Vector maxs_b;
+
+};
 
 // OBJ FILE READER
 
@@ -254,10 +306,15 @@ public:
 
 
 // MESH
-class TriangleMesh {
+class  TriangleMesh :Objet {
 public:
   ~TriangleMesh() {}
-	TriangleMesh() {};
+	TriangleMesh(const Vector &couleur, bool miroir =false, bool transp = false) {
+		
+		objet_miroir = miroir;
+		objet_transparent = transp;
+		albedo = couleur;
+	};
 	
 	void readOBJ(const char* obj) {
 
@@ -431,6 +488,47 @@ public:
 		}
 		fclose(f);
 
+		
+
+	}
+
+
+	bool intersect(const Ray& r,Vector& P, Vector& N, double &t) const
+	{
+		//test d'intersection avec la boite
+		if (!Bbox.intersection_boite(r)){ //boite non touchée
+			return false;
+		}
+
+		//boite touchée on teste les triangles
+		double t_global_tri = 1E99;
+		bool inter_triangle = false;
+		for (int i=0;i<indices.size()/3;i++){
+			//coords triangle
+
+			int t1 = indices[i*3].vtxi;
+			int t2 = indices[i*3].vtxj;
+			int t3 = indices[i*3].vtxk;
+
+			Triangle triangle(vertices[t1],vertices[t2],vertices[t3],albedo,objet_miroir,objet_transparent);
+			Vector P_triangle;
+			Vector N_triangle;
+			double t_triangle;
+			if(triangle.intersect(r,P_triangle,N_triangle,t_triangle)){
+				inter_triangle=true;
+				if (t_triangle<t_global_tri){
+					t = t_triangle;
+					P= P_triangle;
+					N=N_triangle;
+				}
+			}
+
+		}
+
+		return inter_triangle;
+
+			
+
 	}
 
 	std::vector<TriangleIndices> indices;
@@ -438,8 +536,63 @@ public:
 	std::vector<Vector> normals;
 	std::vector<Vector> uvs;
 	std::vector<Vector> vertexcolors;
-	
+
+	BoiteEnglobante Bbox;
+
+void rotate(int axis_rot, double angle_rot)
+{
+    angle_rot = angle_rot * M_PI / 180;
+    double cos_rot = cos(angle_rot);
+    double sin_rot = sin(angle_rot);
+    int idx1 = (axis_rot + 1) % 3;
+    int idx2 = (axis_rot + 2) % 3;
+
+    for (int k = 0; k < vertices.size(); k++)
+    {
+        double prev1 = vertices[k][idx1];
+        double prev2 = vertices[k][idx2];
+        vertices[k][idx1] = prev1 * cos_rot + prev2 * sin_rot;
+        vertices[k][idx2] = -prev1 * sin_rot + prev2 * cos_rot;
+    }
+    for (int k = 0; k < normals.size(); k++)
+    {
+        double prev1 = normals[k][idx1];
+        double prev2 = normals[k][idx2];
+        normals[k][idx1] = prev1 * cos_rot + prev2 * sin_rot;
+        normals[k][idx2] = -prev1 * sin_rot + prev2 * cos_rot;
+    }
+}
+
+void translate(int axis_rot, double translation_distance)
+{
+
+    for (int k = 0; k < vertices.size(); k++)
+    {
+        vertices[k][axis_rot] = vertices[k][axis_rot] + translation_distance;
+    }
+    for (int k = 0; k < normals.size(); k++)
+    {
+        
+        normals[k][axis_rot] = normals[k][axis_rot] + translation_distance;
+    }
+}
+
+//Calcul de la boite engloblante 
+	void findBox(){
+		Bbox.maxs_b = vertices[0];
+		Bbox.mins_b = vertices[0];
+		for (int i =1; i<vertices.size();i++){
+			for (int j=0;j < 3;j++){
+				Bbox.mins_b[j]= std::min(Bbox.mins_b[j],vertices[i][j]);
+				Bbox.maxs_b[j]= std::max(Bbox.maxs_b[j],vertices[i][j]);
+			}
+		}
+		}
+
 };
+
+
+
 
 
 
@@ -451,6 +604,7 @@ class Scene{
 	// AJOUT D'UNE SPHERE DANS LA SCENE
 	void addSphere(const Sphere& s) {objets.push_back((Objet*)&s);}
 	void addTriangle(const Triangle& obj) {objets.push_back((Objet*)&obj);}
+	void addMesh(const TriangleMesh& mesh) {objets.push_back((Objet*)&mesh);}
 
 	// ROUTINE D'INTERSECTION ENTRE UN RAYON ET TOUTES LES SPHERES DE LA SCENE
 	bool intersect_scene(const Ray& r , Vector& P, Vector& N, int &rang_obj, double &t_min){
@@ -494,7 +648,7 @@ class Scene{
 		double t_min; 
 		bool inter = intersect_scene(r,P,N,rang_obj,t_min);
 
-		if (inter){ //le rayon intersecte avec un spherecou un triangle de la scène
+		if (inter){ //le rayon intersecte avec un sphere ou un triangle de la scène
 
 
 			Vector l = (lumiere_position - P);
@@ -610,7 +764,7 @@ class Scene{
 				intensite_pixel = objets[rang_obj]->albedo *(lumiere_intensite / (4*M_PI*(lumiere_position - P).norm2())*std::max(0.,dot(N,w_i))*std::max(0.,dot(direction_random_direct,(Vector(0,0,0)-w_i))) / dot(central_vector,direction_random_direct)*visibilite);
 				
 				// ECLAIRAGE INDIRECT
-				
+				/*
 				double random_1 = uniform(engine);
 				double random_2 = uniform(engine);
 
@@ -627,9 +781,9 @@ class Scene{
 				Ray rayon_random(P + 0.001*N, direction_random_indirect)	;			
 
 				return intensite_pixel+getColor(rayon_random,rebond-1)*objets[rang_obj]->albedo;
-				
+				*/
 				return intensite_pixel;
-
+				
 			}
 			}
 		
@@ -661,15 +815,15 @@ class Scene{
 int main() {
 	auto start = high_resolution_clock::now();
 
-	// RESOLUTION DE L'IMAGE
-	int W = 512;
+	// RESOLUTION DE L'IMAGE     //1024 pour objet simples ou 512 pour maillage pour limiter temps de calcul
+	int W = 512;   
 	int H = 512;
 
 	//Monte Carlo
-	const int Nb_rayons=100;
+	const int Nb_rayons=8;
 
 	//NOM DE L'IMAGE
-	const char* nom_image = "aperture_5_100rays.png";
+	const char* nom_image = "test_mesh.png";
 
 	// POSITION DE LA CAMERA
 	Vector C(0,0,55);
@@ -687,28 +841,45 @@ int main() {
 
 
 	//TRIANGLE:
-	Vector T1(-10,-10,-20);
-	Vector T2(10,-10,-20);
-	Vector T3(0,10,-20);
+	Vector T1(-5,-5,30);
+	Vector T2(5,-5,30);
+	Vector T3(0,5,30);
 	Triangle triangle_test(T1,T2,T3,Vector(1,0,0));
+
+
+	//MAILLAGE
+
+
+	TriangleMesh mesh_test(Vector(255,255,255),false,false);
+	mesh_test.readOBJ("dog.obj");
+
+	//Rotation et translation du maillage
+	mesh_test.rotate(0,90);
+	mesh_test.rotate(1,45);
+	mesh_test.translate(1,-5);
+
+	//Calcul de la boite englobante
+	mesh_test.findBox();
 
 
 	Scene scene;
 
-	scene.addSphere(s1);
-	scene.addSphere(s2);
+	//scene.addSphere(s1);
+	//scene.addSphere(s2);
 	scene.addSphere(s3);
 	//scene.addSphere(s4);
 	scene.addSphere(s5);
 	scene.addSphere(s6);
 	scene.addSphere(s7);
 	scene.addSphere(s8);
-    scene.addSphere(s9);
+    //scene.addSphere(s9);
 
 	//scene.addTriangle(triangle_test);
 
+	scene.addMesh(mesh_test);
+
 	// NOMBRE DE REBONDS MAX POUR LES SPHERES MIROIRS
-	int nb_rebond_max = 10; //scene.spheres.size();
+	int nb_rebond_max = 10; 
 
 
 	// ANGLE DE CHAMPS
@@ -719,13 +890,16 @@ int main() {
 	// LUMIERE POSITION ET INTENSITE ET RAYON POUR LES SOURCES DIFFUSES
 	scene.lumiere_position = Vector(-20,40,80);
 	scene.lumiere_intensite = 8000000000;
-	scene.lumiere_rayon = 7;
+	scene.lumiere_rayon = 20;
 
 
 
 	// CALCUL DE L'IMAGE
 	std::vector<unsigned char> image(W * H * 3, 0);
 	
+
+int nb_total_rays = Nb_rayons*W*H;
+int compteur=0;
 
 #pragma omp parallel for
 	for (int i = 0; i < H; i++) {
@@ -737,7 +911,8 @@ int main() {
 			
 			Vector pixel(0.,0.,0.);
 			for (int k=0; k<Nb_rayons;k++){
-				
+
+				std::cout << "rayon " << compteur << " sur " << nb_total_rays << "\n" ;
 			//CREATION DU RAYON POUR CHAQUE PIXEL
 
 
@@ -769,10 +944,14 @@ int main() {
 				Vector new_u = plan_net-new_C;
 				new_u.normalize();
 
+				//SANS DIAPH
+				Ray r(C,u);
 
-				Ray r(new_C,new_u);
+				//AVEC DIAPH
+				//Ray r(new_C,new_u);
 				
 				pixel = pixel + scene.getColor(r,nb_rebond_max)/Nb_rayons;
+				compteur++;
 			}
 			//Vector intensite_pixel = scene.getColor(r,nb_rebond_max);
 
